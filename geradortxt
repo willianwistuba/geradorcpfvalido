@@ -1,0 +1,86 @@
+COPIE E COLE O CÓDIGO ABAIXO PARA USO NO GOOGLE COLAB
+_______________________________________________________________________
+# Instala dependências no Google Colab
+!pip install selenium webdriver-manager
+!apt-get update # Atualiza pacotes
+!apt-get install -y chromium-chromedriver
+
+# Importa bibliotecas
+import time
+import os
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+
+# Variáveis globais
+tempo_espera = 2  # segundos
+total_cpfs_gerados = 'cpfvalido.txt'
+dados_encontrados = 'dados_nome_cpf.txt'
+
+def setup_driver():
+    """Configura o WebDriver (Chrome)"""
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+    return driver
+
+# Gera CPFs Válidos
+def gerar_cpfs():
+    def calcula_digito(cpf):
+        soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
+        primeiro_digito = 11 - (soma % 11)
+        primeiro_digito = 0 if primeiro_digito >= 10 else primeiro_digito
+        soma = sum(int(cpf[i]) * (11 - i) for i in range(9)) + (primeiro_digito * 2)
+        segundo_digito = 11 - (soma % 11)
+        segundo_digito = 0 if segundo_digito >= 10 else segundo_digito
+        return f"{primeiro_digito}{segundo_digito}"
+
+    parte_fixa = input("Digite os seis dígitos centrais do CPF (ex: 807728): ").strip()
+    if not (parte_fixa.isdigit() and len(parte_fixa) == 6):
+        print("Por favor, insira exatamente seis dígitos.")
+        return
+
+    prefixos = [f"{i:03}" for i in range(1000)]
+    with open(total_cpfs_gerados, 'w') as file:
+        for prefixo in prefixos:
+            cpf_base = f"{prefixo}{parte_fixa}"
+            digitos_verificadores = calcula_digito(cpf_base)
+            file.write(f"{cpf_base}{digitos_verificadores}\n")
+    print(f"CPFs gerados em '{total_cpfs_gerados}'.")
+
+def consultar_cpfs():
+    """Consulta CPFs no site e salva os nomes encontrados"""
+    driver = setup_driver()
+    driver.get("https://www.situacao-cadastral.com/")
+    input("Por favor, resolva o CAPTCHA no site e pressione Enter para continuar...")
+
+    with open(total_cpfs_gerados, 'r') as file_in, open(dados_encontrados, 'w') as file_out:
+        cpfs = [line.strip() for line in file_in]
+        for cpf in cpfs:
+            print(f"Consultando CPF: {cpf}...")
+            try:
+                driver.get("https://www.situacao-cadastral.com/")
+                driver.find_element(By.ID, "doc").send_keys(cpf)
+                driver.find_element(By.ID, "consultar").click()
+                time.sleep(tempo_espera)
+                nome = driver.find_element(By.CSS_SELECTOR, "span.dados.nome").text
+                print(f"Nome: {nome}")
+                file_out.write(f"{cpf}: {nome}\n")
+            except Exception as e:
+                print(f"Erro ao consultar CPF {cpf}: {str(e)}")
+    driver.quit()
+    print(f"Resultados salvos em '{dados_encontrados}'.")
+
+# Fluxo principal
+if __name__ == "__main__":
+    print("1. Gerar CPFs válidos\n2. Consultar CPFs gerados")
+    opcao = input("Escolha uma opção (1/2): ").strip()
+    if opcao == '1':
+        gerar_cpfs()
+    elif opcao == '2':
+        consultar_cpfs()
+    else:
+        print("Opção inválida.")
